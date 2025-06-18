@@ -72,25 +72,24 @@ jobs:
         cp -r templates build/
         
         # Create a simple index.html for GitHub Pages
-        python -c "
-import os
-from jinja2 import Template
-import sys
-
-# Read the template
-with open('templates/index.html', 'r') as f:
-    template_content = f.read()
-
-# Replace Flask template syntax with static paths
-template_content = template_content.replace(\"{{ url_for('static', filename='style.css') }}\", 'static/style.css')
-template_content = template_content.replace(\"{{ url_for('static', filename='script.js') }}\", 'static/script.js')
-
-# Write to build directory
-with open('build/index.html', 'w') as f:
-    f.write(template_content)
-
-print('Static site built successfully')
-        "
+        python3 << 'EOF'
+        import os
+        import sys
+        
+        # Read the template
+        with open('templates/index.html', 'r') as f:
+            template_content = f.read()
+        
+        # Replace Flask template syntax with static paths
+        template_content = template_content.replace("{{ url_for('static', filename='style.css') }}", 'static/style.css')
+        template_content = template_content.replace("{{ url_for('static', filename='script.js') }}", 'static/script.js')
+        
+        # Write to build directory
+        with open('build/index.html', 'w') as f:
+            f.write(template_content)
+        
+        print('Static site built successfully')
+        EOF
 
     - name: Create API endpoint simulation
       run: |
