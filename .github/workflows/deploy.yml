@@ -1,0 +1,289 @@
+name: Deploy TDS Virtual TA to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: 3.11
+  NODE_VERSION: 18
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flask requests trafilatura python-dotenv gunicorn
+        pip install -r requirements.txt || echo "No requirements.txt found, using manual install"
+
+    - name: Create requirements.txt if not exists
+      run: |
+        if [ ! -f requirements.txt ]; then
+          echo "flask==3.0.0" > requirements.txt
+          echo "requests==2.31.0" >> requirements.txt
+          echo "trafilatura==1.6.4" >> requirements.txt
+          echo "python-dotenv==1.0.0" >> requirements.txt
+          echo "gunicorn==21.2.0" >> requirements.txt
+        fi
+
+    - name: Build static site
+      env:
+        AIPIPE_TOKEN: ${{ secrets.AIPIPE_TOKEN }}
+        SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      run: |
+        # Create a build directory
+        mkdir -p build
+        
+        # Copy static files
+        cp -r static build/
+        cp -r templates build/
+        
+        # Create a simple index.html for GitHub Pages
+        python -c "
+import os
+from jinja2 import Template
+import sys
+
+# Read the template
+with open('templates/index.html', 'r') as f:
+    template_content = f.read()
+
+# Replace Flask template syntax with static paths
+template_content = template_content.replace(\"{{ url_for('static', filename='style.css') }}\", 'static/style.css')
+template_content = template_content.replace(\"{{ url_for('static', filename='script.js') }}\", 'static/script.js')
+
+# Write to build directory
+with open('build/index.html', 'w') as f:
+    f.write(template_content)
+
+print('Static site built successfully')
+        "
+
+    - name: Create API endpoint simulation
+      run: |
+        # Create a simple JavaScript file to handle API calls for demo
+        cat > build/static/api-demo.js << 'EOF'
+        // Demo API responses for GitHub Pages deployment
+        window.demoAPIResponses = {
+          "How do I use pandas DataFrames?": {
+            "answer": "DataFrames are the core data structure in pandas. Here's how to use them:\n\n1. **Creating DataFrames:**\n   ```python\n   import pandas as pd\n   df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})\n   ```\n\n2. **Reading data:**\n   ```python\n   df = pd.read_csv('file.csv')\n   ```\n\n3. **Basic operations:**\n   - Filter: `df[df['column'] > value]`\n   - Group: `df.groupby('column').mean()`\n   - Merge: `pd.merge(df1, df2, on='key')`\n\nDataFrames provide powerful data manipulation capabilities for data analysis tasks.",
+            "links": [
+              {
+                "url": "https://discourse.onlinedegree.iitm.ac.in/t/pandas-dataframe-operations/155945",
+                "text": "Pandas DataFrame Operations"
+              }
+            ]
+          },
+          "How can I set up a virtual environment in python?": {
+            "answer": "Setting up a Python virtual environment is essential for project isolation:\n\n**Method 1: Using venv (recommended)**\n```bash\n# Create virtual environment\npython -m venv myenv\n\n# Activate (Linux/Mac)\nsource myenv/bin/activate\n\n# Activate (Windows)\nmyenv\\Scripts\\activate\n\n# Install packages\npip install package_name\n\n# Deactivate\ndeactivate\n```\n\n**Method 2: Using conda**\n```bash\nconda create -n myenv python=3.11\nconda activate myenv\n```\n\n**Best practices:**\n- Always use virtual environments for projects\n- Keep requirements.txt updated: `pip freeze > requirements.txt`\n- Use descriptive environment names",
+            "links": [
+              {
+                "url": "https://discourse.onlinedegree.iitm.ac.in/t/python-environment-setup-issues/155940",
+                "text": "Python Environment Setup Issues"
+              }
+            ]
+          },
+          "How can I create an API?": {
+            "answer": "Creating APIs with Flask is straightforward and powerful:\n\n**1. Basic Flask API setup:**\n```python\nfrom flask import Flask, jsonify, request\n\napp = Flask(__name__)\n\n@app.route('/api/data', methods=['GET'])\ndef get_data():\n    return jsonify({'message': 'Hello, API!'})\n\n@app.route('/api/data', methods=['POST'])\ndef post_data():\n    data = request.get_json()\n    return jsonify({'received': data})\n\nif __name__ == '__main__':\n    app.run(debug=True)\n```\n\n**2. Best practices:**\n- Use proper HTTP methods (GET, POST, PUT, DELETE)\n- Validate input data\n- Handle errors gracefully\n- Use JSON for data exchange\n- Implement authentication when needed\n\n**3. Testing your API:**\n```bash\ncurl -X POST http://localhost:5000/api/data \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"key\": \"value\"}'\n```",
+            "links": [
+              {
+                "url": "https://discourse.onlinedegree.iitm.ac.in/t/flask-api-development-tutorial/155944",
+                "text": "Flask API Development Tutorial"
+              }
+            ]
+          }
+        };
+        EOF
+
+    - name: Update JavaScript for demo mode
+      run: |
+        # Append demo functionality to the existing script.js
+        cat >> build/static/script.js << 'EOF'
+        
+        // Override fetch for demo mode on GitHub Pages
+        const originalFetch = window.fetch;
+        window.fetch = function(url, options) {
+          if (url === '/api/' && window.demoAPIResponses) {
+            const requestData = JSON.parse(options.body);
+            const question = requestData.question.toLowerCase();
+            
+            // Find matching demo response
+            let response = null;
+            for (const [demoQuestion, demoResponse] of Object.entries(window.demoAPIResponses)) {
+              if (question.includes(demoQuestion.toLowerCase().split(' ').slice(0, 3).join(' '))) {
+                response = demoResponse;
+                break;
+              }
+            }
+            
+            if (!response) {
+              response = {
+                "answer": "This is a demo version of the TDS Virtual Teaching Assistant. The question you asked doesn't match our demo responses. Try asking:\n\n• How do I use pandas DataFrames?\n• How can I set up a virtual environment in python?\n• How can I create an API?\n\nFor the full interactive experience with AI responses, please deploy the application with proper API keys.",
+                "links": []
+              };
+            }
+            
+            return Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve(response)
+            });
+          }
+          return originalFetch.apply(this, arguments);
+        };
+        EOF
+
+    - name: Add demo notice
+      run: |
+        # Add a demo notice to the HTML
+        sed -i 's/<p class="text-muted mb-0">Ask questions about Tools in Data Science course<\/p>/<p class="text-muted mb-0">Ask questions about Tools in Data Science course<\/p><div class="alert alert-info mt-2"><i class="fas fa-info-circle me-2"><\/i><strong>Demo Mode:<\/strong> This is a static demo. Try the sample questions for demonstration responses.<\/div>/' build/index.html
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v3
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: './build'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+  # Alternative deployment job for full Flask app (when using external hosting)
+  deploy-flask:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flask requests trafilatura python-dotenv gunicorn
+
+    - name: Create deployment package
+      run: |
+        mkdir -p deployment
+        cp -r *.py deployment/
+        cp -r static deployment/
+        cp -r templates deployment/
+        cp requirements.txt deployment/ || echo "flask==3.0.0" > deployment/requirements.txt
+        
+        # Create Procfile for Heroku
+        echo "web: gunicorn --bind 0.0.0.0:\$PORT main:app" > deployment/Procfile
+        
+        # Create runtime.txt for Heroku
+        echo "python-${{ env.PYTHON_VERSION }}" > deployment/runtime.txt
+
+    - name: Archive deployment package
+      uses: actions/upload-artifact@v3
+      with:
+        name: flask-deployment
+        path: deployment/
+
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flask requests trafilatura python-dotenv gunicorn pytest
+
+    - name: Run basic tests
+      env:
+        AIPIPE_TOKEN: "test-token"
+        SESSION_SECRET: "test-secret"
+      run: |
+        python -c "
+import sys
+sys.path.append('.')
+
+# Test imports
+try:
+    from app import app
+    from api import VirtualTAAPI
+    from data_store import DataStore
+    from scraper import DiscourseScraperTDS
+    print('✓ All modules imported successfully')
+except ImportError as e:
+    print(f'✗ Import error: {e}')
+    sys.exit(1)
+
+# Test data store
+try:
+    ds = DataStore()
+    result = ds.search_content('pandas')
+    print(f'✓ Data store working: found {len(result.get(\"discourse_posts_detailed\", []))} relevant posts')
+except Exception as e:
+    print(f'✗ Data store error: {e}')
+    sys.exit(1)
+
+# Test API class
+try:
+    api = VirtualTAAPI()
+    print('✓ API class initialized successfully')
+except Exception as e:
+    print(f'✗ API class error: {e}')
+    sys.exit(1)
+
+print('All tests passed!')
+        "
