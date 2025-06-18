@@ -24,9 +24,32 @@ data_store = DataStore()
 scraper = DiscourseScraperTDS()
 virtual_ta = VirtualTAAPI()
 
-@app.route('/',  methods=['GET','POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    """Main page with API testing interface"""
+    if request.method == 'POST':
+        try:
+            if not request.is_json:
+                return jsonify({"error": "Content-Type must be application/json"}), 400
+
+            data = request.get_json()
+            if not data or 'question' not in data:
+                return jsonify({"error": "Question is required"}), 400
+
+            question = data.get('question', '').strip()
+            image_base64 = data.get('image', '')
+
+            if not question:
+                return jsonify({"error": "Question cannot be empty"}), 400
+
+            app.logger.info(f"Received question (via root POST): {question[:100]}...")
+            response = virtual_ta.process_question(question, image_base64)
+            return jsonify(response)
+
+        except Exception as e:
+            app.logger.error(f"Root POST error: {str(e)}")
+            return jsonify({"error": "Internal server error"}), 500
+
+    # If GET, show UI
     return render_template('index.html')
 
 @app.route('/api/', methods=['GET','POST'])
