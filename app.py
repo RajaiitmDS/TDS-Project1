@@ -9,6 +9,7 @@ from datetime import datetime
 from api import VirtualTAAPI
 from scraper import DiscourseScraperTDS
 from data_store import DataStore
+from flask_cors import CORS
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -16,6 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+CORS(app)
 
 # Initialize components
 data_store = DataStore()
