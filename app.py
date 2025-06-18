@@ -24,7 +24,7 @@ data_store = DataStore()
 scraper = DiscourseScraperTDS()
 virtual_ta = VirtualTAAPI()
 
-@app.route('/')
+@app.route('/',  methods=['POST'])
 def index():
     """Main page with API testing interface"""
     return render_template('index.html')
@@ -83,7 +83,7 @@ def scrape_endpoint():
         app.logger.error(f"Error scraping posts: {str(e)}")
         return jsonify({"error": "Failed to scrape posts"}), 500
 
-@app.route('/health')
+@app.route('/health',  methods=['POST'])
 def health():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
